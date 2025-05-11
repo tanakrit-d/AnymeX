@@ -1,16 +1,23 @@
 // ignore_for_file: invalid_use_of_protected_member, deprecated_member_use
+
+import 'dart:io' show Platform;
+
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:get/get.dart';
+
 import 'package:anymex/controllers/service_handler/service_handler.dart';
 import 'package:anymex/controllers/settings/methods.dart';
 import 'package:anymex/controllers/settings/settings.dart';
+import 'package:anymex/widgets/common/scroll_aware_app_bar.dart';
 import 'package:anymex/widgets/custom_widgets/anymex_button.dart';
 import 'package:anymex/widgets/custom_widgets/custom_text.dart';
 import 'package:anymex/widgets/custom_widgets/custom_textspan.dart';
-import 'package:anymex/widgets/header.dart';
-import 'package:anymex/widgets/helper/scroll_wrapper.dart';
 import 'package:anymex/widgets/non_widgets/snackbar.dart';
-import 'package:cached_network_image/cached_network_image.dart';
-import 'package:flutter/material.dart';
-import 'package:get/get.dart';
+import 'package:anymex/widgets/unified_header.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({
@@ -22,6 +29,10 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
+  late ScrollController _scrollController;
+  final ValueNotifier<bool> _isAppBarVisibleExternally =
+      ValueNotifier<bool>(true);
+
   @override
   void initState() {
     super.initState();
@@ -29,71 +40,137 @@ class _HomePageState extends State<HomePage> {
       Get.find<Settings>().checkForUpdates(context);
       Get.find<Settings>().showWelcomeDialog(context);
     });
+    _scrollController = ScrollController();
+  }
+
+  ScrollController get scrollController => _scrollController;
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    _isAppBarVisibleExternally.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final serviceHandler = Get.find<ServiceHandler>();
     final isDesktop = MediaQuery.of(context).size.width > 600;
+    final statusBarHeight = MediaQuery.of(context).padding.top;
+    const appBarHeight = kToolbarHeight + 20;
+    final double bottomNavBarHeight = MediaQuery.of(context).padding.bottom;
+
+    final bool isMobile = !kIsWeb && (Platform.isAndroid || Platform.isIOS);
+
+    final TextAlign textAlignment =
+        isMobile ? TextAlign.center : TextAlign.left;
 
     return RefreshIndicator(
       onRefresh: () {
         if (!serviceHandler.isLoggedIn.value) {
-          snackBar("Bruhh, Login before you do that :>", duration: 1200);
+          snackBar(
+              "W-what are you doing step-bro, login before you do that (●´⌓`●)",
+              duration: 1200);
         }
         return serviceHandler.refresh();
       },
       child: Scaffold(
-        body: ScrollWrapper(
+        extendBodyBehindAppBar: true,
+        body: Stack(
           children: [
-            const Header(isHomePage: true),
-            const SizedBox(height: 30),
-            if (!isDesktop) ...[
-              Obx(
-                () => Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20.0),
-                  child: AnymexTextSpans(
-                    fontSize: 30,
-                    spans: [
-                      const AnymexTextSpan(
-                          text: 'Hey ', size: 30, variant: TextVariant.bold),
-                      AnymexTextSpan(
-                          text:
-                              '${serviceHandler.isLoggedIn.value ? serviceHandler.profileData.value.name : 'Guest'}',
-                          size: 30,
-                          color: Theme.of(context).colorScheme.primary,
-                          variant: TextVariant.bold),
-                      const AnymexTextSpan(
-                          text: ', What are we doing today?',
-                          size: 30,
-                          variant: TextVariant.bold)
-                    ],
-                    textAlign: TextAlign.center,
+            SingleChildScrollView(
+              controller: _scrollController,
+              child: Column(
+                crossAxisAlignment: isMobile
+                    ? CrossAxisAlignment.center
+                    : CrossAxisAlignment.start,
+                children: [
+                  SizedBox(
+                    height: isDesktop ? 10 : statusBarHeight + appBarHeight,
                   ),
+                  const SizedBox(height: 10),
+                  Obx(
+                    () => Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20.0),
+                      child: AnymexTextSpans(
+                        fontSize: 30,
+                        spans: [
+                          const AnymexTextSpan(
+                              text: 'Hey ',
+                              size: 30,
+                              variant: TextVariant.bold),
+                          AnymexTextSpan(
+                              text:
+                                  '${serviceHandler.isLoggedIn.value ? serviceHandler.profileData.value.name : 'Guest'}',
+                              size: 30,
+                              color: Theme.of(context).colorScheme.primary,
+                              variant: TextVariant.bold),
+                          const AnymexTextSpan(
+                              text: ', what are we doing today?',
+                              size: 30,
+                              variant: TextVariant.bold),
+                        ],
+                        textAlign: textAlignment,
+                      ),
+                    ),
+                  ),
+                  Obx(() {
+                    return Column(
+                      crossAxisAlignment: isMobile
+                          ? CrossAxisAlignment.center
+                          : CrossAxisAlignment.start,
+                      children: [
+                        const SizedBox(height: 10),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          child: Text(
+                            'Find your favourite anime or manga, manhwa or whatever you like!',
+                            style: TextStyle(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .inverseSurface
+                                  .withOpacity(0.8),
+                            ),
+                            textAlign: textAlignment,
+                          ),
+                        ),
+                        const SizedBox(height: 30),
+                        ...serviceHandler.homeWidgets(context),
+                      ],
+                    );
+                  }),
+                  if (!isDesktop)
+                    SizedBox(height: bottomNavBarHeight)
+                  else
+                    const SizedBox(height: 50),
+                ],
+              ),
+            ),
+            if (!isDesktop)
+              CustomAnimatedAppBar(
+                isVisible: _isAppBarVisibleExternally,
+                scrollController: _scrollController,
+                headerContent: const UnifiedHeader(isHomePage: true),
+                visibleStatusBarStyle: SystemUiOverlayStyle(
+                  statusBarIconBrightness:
+                      Theme.of(context).brightness == Brightness.light
+                          ? Brightness.dark
+                          : Brightness.light,
+                  statusBarBrightness: Theme.of(context).brightness,
+                  statusBarColor: Colors.transparent,
+                ),
+                hiddenStatusBarStyle: SystemUiOverlayStyle(
+                  statusBarIconBrightness:
+                      Theme.of(context).brightness == Brightness.light
+                          ? Brightness.light
+                          : Brightness.dark,
+                  statusBarBrightness:
+                      Theme.of(context).brightness == Brightness.light
+                          ? Brightness.dark
+                          : Brightness.light,
+                  statusBarColor: Colors.transparent,
                 ),
               ),
-              const SizedBox(height: 10),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Text(
-                  'Find your favourite anime or manga, manhwa or whatever you like!',
-                  style: TextStyle(
-                    color: Theme.of(context)
-                        .colorScheme
-                        .inverseSurface
-                        .withOpacity(0.8),
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-              const SizedBox(height: 30),
-            ],
-            Obx(() {
-              return Column(
-                children: serviceHandler.homeWidgets(context),
-              );
-            }),
-            const SizedBox(height: 50)
           ],
         ),
       ),
